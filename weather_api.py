@@ -6,6 +6,11 @@ from datetime import datetime, timedelta, timezone
 import requests
 from dotenv import load_dotenv
 
+try:
+    import streamlit as st
+except ImportError:  # The module still works when run outside Streamlit.
+    st = None
+
 load_dotenv()
 
 GEOCODING_URL = "http://api.openweathermap.org/geo/1.0/direct"
@@ -18,17 +23,35 @@ AQI_LABELS = {1: "Good", 2: "Fair", 3: "Moderate", 4: "Poor", 5: "Very Poor"}
 ACTIVITIES = ("spraying", "event", "drying")
 
 
+def _get_api_key():
+    """Return the OpenWeatherMap API key from st.secrets or the environment.
+
+    Prefers Streamlit secrets so the app works when deployed, and falls back
+    to OPENWEATHER_API_KEY from .env / the environment when running locally.
+    """
+    if st is not None:
+        try:
+            return st.secrets["OPENWEATHER_API_KEY"]
+        except Exception:
+            # No secrets file, no such key, or no Streamlit runtime - fall back.
+            pass
+
+    api_key = os.getenv("OPENWEATHER_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "OPENWEATHER_API_KEY is not set. Add it to your .env file or to "
+            "Streamlit secrets."
+        )
+    return api_key
+
+
 def search_cities(city_name, limit=5):
     """Search for cities matching `city_name` via the OpenWeatherMap Geocoding API.
 
     Returns a list of dicts with keys: name, state, country, lat, lon.
     Returns an empty list if nothing matches.
     """
-    api_key = os.getenv("OPENWEATHER_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "OPENWEATHER_API_KEY is not set. Add it to your .env file."
-        )
+    api_key = _get_api_key()
 
     params = {"q": city_name, "limit": limit, "appid": api_key}
 
@@ -61,11 +84,7 @@ def get_current_weather(lat, lon):
     Returns a dict with keys: temp, feels_like, humidity, wind_speed,
     description, icon, city_name, timezone_offset (seconds from UTC).
     """
-    api_key = os.getenv("OPENWEATHER_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "OPENWEATHER_API_KEY is not set. Add it to your .env file."
-        )
+    api_key = _get_api_key()
 
     params = {"lat": lat, "lon": lon, "units": "metric", "appid": api_key}
 
@@ -106,11 +125,7 @@ def get_forecast(lat, lon):
     date (a date object), temp_min, temp_max, icon, description.
     The icon and description come from the entry closest to 12:00 local time.
     """
-    api_key = os.getenv("OPENWEATHER_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "OPENWEATHER_API_KEY is not set. Add it to your .env file."
-        )
+    api_key = _get_api_key()
 
     params = {"lat": lat, "lon": lon, "units": "metric", "appid": api_key}
 
@@ -175,11 +190,7 @@ def get_air_quality(lat, lon):
     Returns a dict with keys: aqi (1-5), aqi_label, and the pollutant
     concentrations pm2_5, pm10, o3, no2, so2, co (all in µg/m³).
     """
-    api_key = os.getenv("OPENWEATHER_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "OPENWEATHER_API_KEY is not set. Add it to your .env file."
-        )
+    api_key = _get_api_key()
 
     params = {"lat": lat, "lon": lon, "appid": api_key}
 
