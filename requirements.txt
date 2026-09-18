@@ -1,9 +1,12 @@
 altair==6.3.0
+annotated-doc==0.0.5
+annotated-types==0.8.0
 anyio==4.15.1
 attrs==26.1.0
 certifi==2026.7.22
 charset-normalizer==3.5.1
 click==8.5.0
+fastapi==0.141.1
 h11==0.16.0
 httptools==0.8.0
 idna==3.19
@@ -19,6 +22,8 @@ pandas==3.0.5
 pillow==12.3.0
 protobuf==7.36.1
 pyarrow==25.0.1
+pydantic==2.13.5
+pydantic_core==2.46.5
 pydeck==0.9.3
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.3
@@ -30,6 +35,7 @@ six==1.17.0
 starlette==1.6.0
 streamlit==1.64.0
 toml==0.10.2
+typing-inspection==0.4.4
 typing_extensions==4.16.0
 urllib3==2.8.0
 uvicorn==0.53.0
