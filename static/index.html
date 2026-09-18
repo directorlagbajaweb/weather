@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Weather</h1>
+    <div id="search">
+      <span class="search-icon" aria-hidden="true">&#128269;</span>
+      <input type="search" id="city-input" placeholder="Search for a city..." autocomplete="off">
+      <div id="search-results"></div>
+    </div>
+  </header>
+
+  <main>
+    <div id="current" class="card"></div>
+
+    <nav class="tabs" id="tab-bar">
+      <button type="button" class="tab is-active" data-tab="forecast">Forecast</button>
+      <button type="button" class="tab" data-tab="map">Map</button>
+      <button type="button" class="tab" data-tab="air">Air</button>
+      <button type="button" class="tab" data-tab="advisory">Advisory</button>
+      <button type="button" class="tab" data-tab="world">World</button>
+    </nav>
+
+    <div class="panel is-active" id="panel-forecast">
+      <div id="hourly-chart" class="card" hidden>
+        <h2 class="card-title">Next 5 days</h2>
+        <div class="chart-wrap">
+          <canvas id="hourly-canvas"></canvas>
+        </div>
+      </div>
+      <div id="forecast" class="card"></div>
+    </div>
+
+    <div class="panel" id="panel-map">
+      <div id="map" class="card" hidden>
+        <h2 class="card-title">Map</h2>
+        <div id="leaflet-map"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-air">
+      <div id="air-quality" class="card" hidden>
+        <h2 class="card-title">Air quality</h2>
+        <div id="air-body"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-world">
+      <div class="card" id="feed-recent-card" hidden>
+        <h2 class="card-title">Happening now</h2>
+        <div id="feed-recent"></div>
+      </div>
+      <div class="card" id="feed-ongoing-card" hidden>
+        <h2 class="card-title">Ongoing</h2>
+        <div id="feed-ongoing"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-advisory">
+      <div id="advisory" class="card" hidden>
+        <h2 class="card-title">Advisory</h2>
+        <div class="pills" id="activity-pills">
+          <button type="button" class="pill is-active" data-activity="spraying">Spraying</button>
+          <button type="button" class="pill" data-activity="event">Outdoor event</button>
+          <button type="button" class="pill" data-activity="drying">Drying / storage</button>
+        </div>
+        <div id="advisory-body"></div>
+        <p class="caption">
+          These thresholds are defaults, not local knowledge &mdash; someone who does
+          the work should tune them for the crop, the sprayer and the site.
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+  <script src="app.js"></script>
+</body>
+</html>

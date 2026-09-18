@@ -292,3 +292,53 @@ if __name__ == "__main__":
     fc = get_forecast(13.0059, 5.2476)   # Sokoto
     for row in get_advisory(fc, "spraying"):
         print(row)
+
+
+def get_hourly_forecast(lat, lon):
+    """Fetch the 5-day / 3-hour forecast as an ungrouped series.
+
+    Returns a list of dicts in chronological order with keys: dt (a
+    timezone-aware datetime in the city's local time), temp, feels_like,
+    humidity, wind_speed, rain_mm, description, icon.
+    """
+    api_key = _get_api_key()
+
+    params = {"lat": lat, "lon": lon, "units": "metric", "appid": api_key}
+
+    try:
+        response = requests.get(FORECAST_URL, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except requests.RequestException as exc:
+        raise RuntimeError(
+            f"Failed to get hourly forecast for ({lat}, {lon}): {exc}"
+        ) from exc
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Got an invalid response while getting hourly forecast for "
+            f"({lat}, {lon}): {exc}"
+        ) from exc
+
+    local_tz = timezone(timedelta(seconds=data.get("city", {}).get("timezone", 0)))
+
+    series = []
+    for entry in data.get("list", []):
+        main = entry.get("main", {})
+        weather = (entry.get("weather") or [{}])[0]
+        series.append(
+            {
+                "dt": datetime.fromtimestamp(entry["dt"], tz=local_tz),
+                "temp": main.get("temp"),
+                "feels_like": main.get("feels_like"),
+                "humidity": main.get("humidity"),
+                "wind_speed": entry.get("wind", {}).get("speed"),
+                "rain_mm": entry.get("rain", {}).get("3h", 0.0),
+                "description": weather.get("description", ""),
+                "icon": weather.get("icon", ""),
+            }
+        )
+    return series
+
+if __name__ == "__main__":
+    for row in get_hourly_forecast(6.4550575, 3.3941795)[:6]:
+        print(row)
