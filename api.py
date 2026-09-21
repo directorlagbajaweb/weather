@@ -6,10 +6,11 @@ import time
 
 import requests
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from disasters import get_combined_feed
+from disasters import get_combined_feed, get_event_detail
 from weather_api import (
     ACTIVITIES,
     _get_api_key,
@@ -89,6 +90,31 @@ def feed(limit: int = Query(40), include_minor: bool = Query(False)):
     return items
 
 
+# {event_id: (fetched_at, detail)}
+_event_cache = {}
+
+
+@app.get("/api/event/{event_id}")
+def event(event_id: str):
+    cached = _event_cache.get(event_id)
+    if cached and time.monotonic() - cached[0] < FEED_TTL_SECONDS:
+        return cached[1]
+
+    try:
+        detail = get_event_detail(event_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=404, detail="No detail available for this source"
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    _event_cache[event_id] = (time.monotonic(), detail)
+    return detail
+
+
 TILE_LAYERS = ("clouds_new", "precipitation_new", "temp_new", "wind_new")
 
 TILE_URL = "https://tile.openweathermap.org/map/{layer}/{z}/{x}/{y}.png"
@@ -121,9 +147,30 @@ def tile(layer: str, z: int, x: int, y: int):
     )
 
 
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+class SPAStaticFiles(StaticFiles):
+    """Serve static files, falling back to index.html for client-side routes.
+
+    A mount at "/" matches every path, so any route registered after it is
+    unreachable - the fallback has to live inside the mount rather than in a
+    catch-all route behind it. Unknown /api/ paths keep their 404.
+    """
+
+    async def get_response(self, path, scope):
+        # With html=True a missing file is raised, not returned, so catch both.
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404 and not path.startswith("api/"):
+                return FileResponse(STATIC_DIR / "index.html")
+            raise
+
+        if response.status_code == 404 and not path.startswith("api/"):
+            return FileResponse(STATIC_DIR / "index.html")
+        return response
+
+
 # Mounted last so every /api/ route above is matched first.
-app.mount(
-    "/",
-    StaticFiles(directory=Path(__file__).parent / "static", html=True),
-    name="static",
-)
+app.mount("/", SPAStaticFiles(directory=STATIC_DIR, html=True), name="static")

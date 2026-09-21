@@ -4,6 +4,7 @@ import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Every feed is normalised to this shape, with None where a source has nothing.
 FEED_KEYS = (
+    "id",
     "type",
     "title",
     "location",
@@ -80,8 +82,13 @@ def get_earthquakes(min_magnitude=4.5, period="day"):
         lon, lat, depth = (list(coordinates) + [None, None, None])[:3]
         milliseconds = properties.get("time")
 
+        # The event id is the last path segment of the event page url.
+        event_url = properties.get("url", "")
+        raw_id = urlparse(event_url).path.rsplit("/", 1)[-1] or feature.get("id")
+
         events.append(
             {
+                "id": f"usgs:{raw_id}" if raw_id else None,
                 "type": "earthquake",
                 "title": f"M {magnitude:.1f} earthquake",
                 "location": properties.get("place", ""),
@@ -187,8 +194,19 @@ def get_gdacs_alerts():
             except (TypeError, ValueError):
                 when = None
 
+        # eventtype and eventid live in the report url's query string.
+        link = _text(item, "link") or ""
+        query = parse_qs(urlparse(link).query)
+        gdacs_type = (query.get("eventtype") or [None])[0]
+        gdacs_id = (query.get("eventid") or [None])[0]
+
         alerts.append(
             {
+                "id": (
+                    f"gdacs:{gdacs_type}-{gdacs_id}"
+                    if gdacs_type and gdacs_id
+                    else None
+                ),
                 "type": event_type,
                 "title": _text(item, "title"),
                 "location": _text(item, f"{GDACS_NS}country"),
@@ -247,6 +265,7 @@ def get_eonet_events(limit=20):
 
         events.append(
             {
+                "id": f"eonet:{event['id']}" if event.get("id") else None,
                 "type": category.lower() if category else None,
                 "title": title,
                 "location": event.get("description") or None,
@@ -400,6 +419,73 @@ def get_combined_feed(limit=40, include_minor=False):
 
     return {"recent": recent[:limit], "ongoing": ongoing[:MAX_ONGOING]}
 
+USGS_DETAIL_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
+
+
+def get_event_detail(event_id):
+    """Look up one event by its prefixed feed id.
+
+    Only USGS earthquakes have a detail endpoint. GDACS and EONET raise
+    LookupError so the UI can fall back to what the feed already gave it.
+    """
+    source, _, raw_id = (event_id or "").partition(":")
+
+    if source in ("gdacs", "eonet"):
+        raise LookupError(f"{source} has no detail endpoint for '{raw_id}'.")
+    if source != "usgs":
+        raise ValueError(f"Unknown event id '{event_id}'.")
+
+    try:
+        response = requests.get(
+            USGS_DETAIL_URL,
+            params={"eventid": raw_id, "format": "geojson"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        feature = response.json()
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Failed to get event '{event_id}': {exc}") from exc
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Got an invalid response for event '{event_id}': {exc}"
+        ) from exc
+
+    properties = feature.get("properties", {})
+    coordinates = feature.get("geometry", {}).get("coordinates") or []
+    lon, lat, depth = (list(coordinates) + [None, None, None])[:3]
+    magnitude = properties.get("mag")
+    milliseconds = properties.get("time")
+
+    return {
+        "id": f"usgs:{raw_id}",
+        "type": "earthquake",
+        "title": (
+            f"M {magnitude:.1f} earthquake" if magnitude is not None else "Earthquake"
+        ),
+        "location": properties.get("place", ""),
+        "magnitude": magnitude,
+        "value": None,
+        "unit": None,
+        "depth_km": depth,
+        "severity": None,
+        "level": None,
+        "time": (
+            datetime.fromtimestamp(milliseconds / 1000, tz=timezone.utc)
+            if milliseconds is not None
+            else None
+        ),
+        "since": None,
+        "lat": lat,
+        "lon": lon,
+        "url": properties.get("url", ""),
+        "felt": properties.get("felt"),
+        "alert": properties.get("alert"),
+        "tsunami": bool(properties.get("tsunami")),
+        "significance": properties.get("sig"),
+        "status": properties.get("status"),
+    }
+
+
 if __name__ == "__main__":
     feed = get_combined_feed()
 
@@ -417,3 +503,9 @@ if __name__ == "__main__":
         for event_type, count in sorted(counts.items(), key=lambda pair: -pair[1]):
             cap = MAX_PER_TYPE_OVERRIDES.get(event_type, MAX_PER_TYPE)
             print(f"    {event_type:<15} {count:>3}  (cap {cap})")
+
+if __name__ == "__main__":
+    feed = get_combined_feed()
+    quake = next(i for i in feed["recent"] if i["type"] == "earthquake")
+    print(quake["id"])
+    print(get_event_detail(quake["id"]))

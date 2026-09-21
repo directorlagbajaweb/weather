@@ -22,6 +22,11 @@ const feedRecent = document.getElementById("feed-recent");
 const feedRecentCard = document.getElementById("feed-recent-card");
 const feedOngoing = document.getElementById("feed-ongoing");
 const feedOngoingCard = document.getElementById("feed-ongoing-card");
+const searchMessage = document.getElementById("search-message");
+const chartStatus = document.getElementById("chart-status");
+const chartWrap = document.querySelector(".chart-wrap");
+const mapStatus = document.getElementById("map-status");
+const leafletMap = document.getElementById("leaflet-map");
 
 let hourlyChart = null;
 let map = null;
@@ -54,6 +59,51 @@ async function getJSON(url) {
     throw new Error(body.detail || `Request failed (${response.status})`);
   }
   return response.json();
+}
+
+function skeleton(classes = "", style = "") {
+  return `<div class="skeleton ${classes}"${style ? ` style="${style}"` : ""}></div>`;
+}
+
+function skeletonRows(count) {
+  return Array.from({ length: count }, () => skeleton("skeleton-row")).join("");
+}
+
+function skeletonCurrent() {
+  return `
+    ${skeleton("skeleton-line short")}
+    ${skeleton("skeleton-line tall")}
+    ${skeleton("skeleton-line medium")}
+    <div class="skeleton-stats">
+      ${skeleton()}${skeleton()}${skeleton()}
+    </div>`;
+}
+
+// A block the same height as the card it stands in, so nothing jumps when
+// the real chart or map replaces it.
+function skeletonBlock(element) {
+  const height = element ? getComputedStyle(element).height : "320px";
+  return skeleton("", `height: ${height}`);
+}
+
+function showError(container, message, retry) {
+  container.innerHTML = "";
+
+  const box = document.createElement("div");
+  box.className = "section-error";
+
+  const text = document.createElement("p");
+  text.className = "section-error-text";
+  text.textContent = message;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "retry";
+  button.textContent = "Try again";
+  button.addEventListener("click", retry);
+
+  box.append(text, button);
+  container.appendChild(box);
 }
 
 function stat(label, value) {
@@ -253,6 +303,9 @@ async function loadAdvisory() {
     return;
   }
 
+  advisoryCard.hidden = false;
+  advisoryBody.innerHTML = skeletonRows(5);
+
   try {
     const rows = await getJSON(
       `/api/advisory?lat=${selected.lat}&lon=${selected.lon}&activity=${activity}`
@@ -260,8 +313,7 @@ async function loadAdvisory() {
     renderAdvisory(rows);
   } catch (error) {
     console.error(error);
-    advisoryBody.textContent = error.message;
-    advisoryCard.hidden = false;
+    showError(advisoryBody, "Couldn't load the advisory", loadAdvisory);
   }
 }
 
@@ -392,6 +444,10 @@ function renderFeedGroup(container, card, items, whenFor) {
 }
 
 async function loadFeed() {
+  feedRecentCard.hidden = false;
+  feedRecent.innerHTML = skeletonRows(5);
+  feedOngoingCard.hidden = true;
+
   try {
     const feed = await getJSON("/api/feed");
     renderFeedGroup(feedRecent, feedRecentCard, feed.recent, (item) =>
@@ -402,38 +458,115 @@ async function loadFeed() {
     );
   } catch (error) {
     console.error(error);
-    feedRecent.textContent = error.message;
+    showError(feedRecent, "Couldn't load the world feed", loadFeed);
     feedRecentCard.hidden = false;
+  }
+}
+
+async function loadCurrent(city) {
+  current.innerHTML = skeletonCurrent();
+
+  try {
+    const weather = await getJSON(
+      `/api/weather?lat=${city.lat}&lon=${city.lon}`
+    );
+    renderCurrent(formatCity(city), weather);
+  } catch (error) {
+    console.error(error);
+    showError(current, "Couldn't load current conditions", () =>
+      loadCurrent(city)
+    );
+  }
+}
+
+async function loadHourly(city) {
+  hourlyCard.hidden = false;
+  chartWrap.hidden = true;
+  chartStatus.innerHTML = skeletonBlock(chartWrap);
+
+  try {
+    const series = await getJSON(`/api/hourly?lat=${city.lat}&lon=${city.lon}`);
+    chartStatus.innerHTML = "";
+    chartWrap.hidden = false;
+    renderHourly(series);
+  } catch (error) {
+    console.error(error);
+    showError(chartStatus, "Couldn't load the forecast", () => loadHourly(city));
+  }
+}
+
+async function loadMap(city) {
+  mapCard.hidden = false;
+  leafletMap.hidden = true;
+  mapStatus.innerHTML = skeletonBlock(leafletMap);
+
+  try {
+    // Ask the tile proxy for one tile first: if the key or the upstream is
+    // down, fail here with a retry rather than leaving a blank grey map.
+    const probe = await fetch("/api/tiles/clouds_new/1/1/1.png");
+    if (!probe.ok) {
+      throw new Error(`Tile server returned ${probe.status}`);
+    }
+
+    mapStatus.innerHTML = "";
+    leafletMap.hidden = false;
+    renderMap(city.lat, city.lon);
+  } catch (error) {
+    console.error(error);
+    showError(mapStatus, "Couldn't load the map", () => loadMap(city));
+  }
+}
+
+async function loadAir(city) {
+  airCard.hidden = false;
+  airBody.innerHTML = skeletonRows(3);
+
+  try {
+    renderAir(await getJSON(`/api/air?lat=${city.lat}&lon=${city.lon}`));
+  } catch (error) {
+    console.error(error);
+    showError(airBody, "Couldn't load air quality", () => loadAir(city));
   }
 }
 
 async function selectCity(city) {
   selected = { lat: city.lat, lon: city.lon };
   results.innerHTML = "";
+  searchMessage.innerHTML = "";
   input.value = "";
 
   // The city-specific tabs only exist once there is a city.
   document.body.classList.remove("no-city");
   showTab("forecast");
 
-  const query = `lat=${selected.lat}&lon=${selected.lon}`;
+  // Fired independently, so one failing section cannot blank the others.
+  loadCurrent(city);
+  loadHourly(city);
+  loadMap(city);
+  loadAir(city);
+  loadAdvisory();
+}
+
+async function runSearch(query) {
+  searchMessage.innerHTML = "";
 
   try {
-    const [weather, hourly, air] = await Promise.all([
-      getJSON(`/api/weather?${query}`),
-      getJSON(`/api/hourly?${query}`),
-      getJSON(`/api/air?${query}`),
-    ]);
-    renderCurrent(formatCity(city), weather);
-    renderHourly(hourly);
-    renderMap(selected.lat, selected.lon);
-    renderAir(air);
+    const cities = await getJSON(`/api/search?q=${encodeURIComponent(query)}`);
+
+    if (!cities.length) {
+      results.innerHTML = "";
+      searchMessage.textContent = "No cities found";
+      return;
+    }
+
+    renderResults(cities);
   } catch (error) {
     console.error(error);
-    current.textContent = error.message;
+    results.innerHTML = "";
+    showError(searchMessage, "Couldn't search for cities", () =>
+      runSearch(query)
+    );
   }
-
-  loadAdvisory();
 }
 
 input.addEventListener("input", () => {
@@ -442,17 +575,11 @@ input.addEventListener("input", () => {
 
   if (!query) {
     results.innerHTML = "";
+    searchMessage.innerHTML = "";
     return;
   }
 
-  debounceTimer = setTimeout(async () => {
-    try {
-      renderResults(await getJSON(`/api/search?q=${encodeURIComponent(query)}`));
-    } catch (error) {
-      console.error(error);
-      results.textContent = "Search failed.";
-    }
-  }, 400);
+  debounceTimer = setTimeout(() => runSearch(query), 400);
 });
 
 // Nothing is selected on load: show the world feed on its own.

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Weather</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css">
@@ -14,6 +14,7 @@
       <span class="search-icon" aria-hidden="true">&#128269;</span>
       <input type="search" id="city-input" placeholder="Search for a city..." autocomplete="off">
       <div id="search-results"></div>
+      <div id="search-message"></div>
     </div>
   </header>
 
@@ -31,6 +32,7 @@
     <div class="panel is-active" id="panel-forecast">
       <div id="hourly-chart" class="card" hidden>
         <h2 class="card-title">Next 5 days</h2>
+        <div id="chart-status"></div>
         <div class="chart-wrap">
           <canvas id="hourly-canvas"></canvas>
         </div>
@@ -41,6 +43,7 @@
     <div class="panel" id="panel-map">
       <div id="map" class="card" hidden>
         <h2 class="card-title">Map</h2>
+        <div id="map-status"></div>
         <div id="leaflet-map"></div>
       </div>
     </div>
