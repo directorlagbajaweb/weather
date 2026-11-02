@@ -1,0 +1,19 @@
+{
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": [
+          "server.py",
+          "weather_api.py",
+          "disasters.py",
+          "static/**"
+        ]
+      }
+    }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "api/index.py" }
+  ]
+}

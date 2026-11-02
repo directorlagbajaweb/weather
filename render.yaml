@@ -3,4 +3,4 @@ services:
     name: weather-app
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT

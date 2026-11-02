@@ -17,4 +17,4 @@ COPY --chown=user . .
 
 EXPOSE 7860
 
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "7860"]
